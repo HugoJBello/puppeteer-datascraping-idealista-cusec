@@ -1,0 +1,29 @@
+{
+    "fileName": "test2_polylines_2011_ccaa12.json",
+    "municipioScrapped": false,
+    "cusecs": [
+        {
+            "cusec": "2813401001",
+            "nmun": "San Sebastián de los Reyes2",
+            "urlEncoded": "((%7DcovFf%60cUl%40El%40Bf%40In%40MXjEN%60CFdAHfAQJW%3Fs%40%40Ag%40sAE%7D%40Ac%40%40JqBHgBFsAFsB))\r",
+            "alreadyScrapped": true,
+            "alreadyScraped": false
+        },
+        {
+            "cusec": "2813401002",
+            "nmun": "San Sebastián de los Reyes2",
+            "urlEncoded": "((ceovFhmcUb%40A%7C%40%40rAD%40f%40r%40AV%3FPKjAw%40d%40dBELYZg%40f%40%7B%40d%40iAj%40k%40Z_%40Po%40E%7BAEe%40CP_AF%5BJq%40Js%40PmA))\r",
+            "alreadyScrapped": true,
+            "alreadyScraped": false
+        },
+        {
+            "cusec": "2800701002",
+            "nmun": "Alcorcón2",
+            "urlEncoded": "((%7D%60huFfhkVJ%5Bv%40wA%5Cd%40dDlE%60%40q%40tAoBHN%5EZ%40LZVHFRTp%40t%40jAlAd%40h%40NLUxAQp%40y%40hBgBaCiBpCiMnRgBqCXgERkCd%40%7BGNkCH_ALq%40P%5Bj%40oAPS))",
+            "alreadyScrapped": false,
+            "alreadyScraped": false
+        }
+    ],
+    "_id": "scraping----2018-10-18_17_51_31",
+    "municipioScraped": true
+}

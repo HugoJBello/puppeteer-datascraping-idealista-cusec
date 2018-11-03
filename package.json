@@ -1,0 +1,26 @@
+{
+  "name": "puppeteer-datascraping-idealista-cusec",
+  "version": "0.0.1",
+  "description": "puppeteer-datascraping-idealista-cusec",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HugoJBello/puppeteer-datascraping-idealista-cusec.git"
+  },
+  "author": "Hugo J. Bello",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/HugoJBello/puppeteer-datascraping-idealista-cusec/issues"
+  },
+  "homepage": "https://github.com/HugoJBello/puppeteer-datascraping-idealista-cusec#readme",
+  "dependencies": {
+    "apify": "^0.8.18",
+    "geojson-polyline": "^1.0.2",
+    "modern-random-ua": "^1.0.3",
+    "mongodb": "^3.1.8",
+    "puppeteer": "^1.10.0"
+  }
+}
