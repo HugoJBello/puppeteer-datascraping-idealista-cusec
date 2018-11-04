@@ -4,8 +4,11 @@ const fs = require('fs');
 const Apify = require('apify');
 const randomUA = require('modern-random-ua');
 //import { ConvertCsvRawFilesToJson } from './ConvertCsvRawFilesToJson'
-const ConvertCsvRawFilesToJson = require('./ConvertCsvRawFilesToJson')
-class ScrapperIdealistaPuppeteer {
+const ConvertCsvRawFilesToJson = require('./ConvertCsvRawFilesToJson');
+require('dotenv').load();
+
+
+module.exports = class ScrapperIdealistaPuppeteer {
     constructor() {
         this.json_dir = "json_polylines_municipios";
         this.outputTempDir = "tmp/";
@@ -98,11 +101,20 @@ class ScrapperIdealistaPuppeteer {
     }
 
     async initalizePuppeteer() {
-        this.browser = await Apify.launchPuppeteer({
-            userAgent: randomUA.generate(),
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
+        if (process.env['RASPBERRY_MODE']) {
+            this.browser = await Apify.launchPuppeteer({
+                executablePath: '/usr/bin/chromium-browser',
+                userAgent: randomUA.generate(),
+                headless: true,
+                args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+        } else {
+            this.browser = await Apify.launchPuppeteer({
+                userAgent: randomUA.generate(),
+                headless: true,
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+            });
+        }
         this.page = await this.browser.newPage();
     }
 
@@ -241,8 +253,3 @@ class ScrapperIdealistaPuppeteer {
 }
 
 
-
-
-//------------------MAIN PROGRAM-------------------------
-const scraper = new ScrapperIdealistaPuppeteer();
-scraper.main();
