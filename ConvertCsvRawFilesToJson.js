@@ -1,8 +1,9 @@
 let fs = require('fs');
 
 module.exports = class ConvertCsvRawFilesToJson {
-    constructor() {
-        this.directory = 'csv_polylines_municipios';
+    constructor(csvDir = "csv_polylines_municipios", outputDir = "./json_polylines_municipios") {
+        this.directory = csvDir;
+        this.outputDir = outputDir;
         this.files = fs.readdirSync(this.directory);
     };
 
@@ -11,7 +12,7 @@ module.exports = class ConvertCsvRawFilesToJson {
             console.log(fileName);
             const csv = fs.readFileSync("./" + this.directory + "/" + fileName)
             let json = this.convertFileTojson(csv, fileName);
-            const outputFilename = "./json_polylines_municipios/" + fileName.replace(".csv", ".json");
+            const outputFilename = this.outputDir + "/" + fileName.replace(".csv", ".json");
             fs.writeFileSync(outputFilename, JSON.stringify(json));
         });
     }
