@@ -3,33 +3,31 @@ const devices = require('puppeteer/DeviceDescriptors');
 const fs = require('fs');
 const Apify = require('apify');
 const randomUA = require('modern-random-ua');
-//import { ConvertCsvRawFilesToJson } from './ConvertCsvRawFilesToJson'
-const ConvertCsvRawFilesToJson = require('./ConvertCsvRawFilesToJson');
+
 require('dotenv').load();
 
 
 module.exports = class ScrapperIdealistaPuppeteer {
     constructor() {
-        this.json_dir = "json_polylines_municipios";
         this.outputTempDir = "tmp/";
-        this.config = require("./scraping_config.json");
-        this.files = fs.readdirSync(this.json_dir);
+        this.config = require("./data/config/scrapingConfig.json");
         this.timoutTimeSearches = 1000;
         this.timoutTimeCapchaDetected = 5 * 60 * 1000;
         this.sessionId = this.config.sessionId;
-        this.convertCsvRawFilesToJson = new ConvertCsvRawFilesToJson();
         this.MongoClient = require('mongodb').MongoClient;
-
+        this.separatedFeatures = require("./data/separatedFeatures/separatedFeatures.json");
+        this.scrapingIndexPath = "./data/separatedFeatures/scrapingIndex.json";
+        this.scrapingIndex = require(this.scrapingIndexPath);
+        this.tmpDir = "data/tmp/"
+        this.tmpDirSession = "data/tmp/" + this.config.sessionId;
+        if (!fs.existsSync(this.tmpDir)) {
+            fs.mkdirSync("./" + this.tmpDir);
+        }
         this.date = "";
         this.browser = null;
         this.page = null;
     }
-    async finalizeSession() {
-        this.sessionId = "scraping" + "----" + this.date;
-        this.config.sessionId = this.sessionId;
-        fs.writeFileSync('scraping_config.json', JSON.stringify(this.config));
-        await this.convertCsvRawFilesToJson.convert();
-    }
+
 
     initializeSession() {
         this.date = new Date().toLocaleString().replace(/:/g, '_').replace(/ /g, '_').replace(/\//g, '_');
@@ -44,60 +42,69 @@ module.exports = class ScrapperIdealistaPuppeteer {
     main() {
         Apify.main(async () => {
             this.initializeSession();
-            //files = ["./test_polylines_2011_ccaa12.json"];
-            console.log(this.files);
-            //const csv_file = "./csv_polylines_municipios/test_polylines_2011_ccaa12.csv"
             console.log(this.date);
 
-            for (let json_file of this.files) {
-                const municipio = require("./" + this.json_dir + "/" + json_file);
-                if (!municipio._id) { municipio._id = this.sessionId; }
-                if (!municipio.municipioScraped) {
-                    const cusecs = municipio.cusecs;
-                    let extractedData = this.initializeDataForMunicipio(json_file);
+            for (let nmun in this.separatedFeatures) {
+                console.log("-----------------------\n Scraping data from " + nmun + "\n-----------------------");
+                let municipioResults = this.initializeMunicipio(nmun);
+                for (let cusecName in this.separatedFeatures[nmun]) {
+                    this.initializeConfigAndIndex();
+                    console.log("\n------->" + cusecName)
 
-                    await this.initalizePuppeteer();
-
-                    let continueScraping = true;
-                    let i = 0;
-                    while (continueScraping) {
-                        let cusec = cusecs[i];
-                        let capchaFound = false;
-                        let data;
-                        if (!cusec.alreadyScraped) {
-
-                            await this.page.setUserAgent(randomUA.generate());
-                            await this.page.emulate(devices['iPhone 6']);
-
-                            data = await this.extractDataAlquilerVenta(municipio, cusec);
-
-                            await this.page.waitFor(this.timoutTimeSearches);
-                            console.log(data);
-                            capchaFound = await this.detectCapcha(data);
-                        }
-                        if (!capchaFound) {
-                            if (data) { extractedData.scrapedData.push(data); }
-                            this.saveDataForMunicipio(extractedData, json_file);
-
-                            if (municipio.cusecs[i]) municipio.cusecs[i].alreadyScraped = true;
-                            this.updateFileMunicipio(municipio, this.json_dir);
-                            i = i + 1;
-                            continueScraping = (i < cusecs.length);
-                        }
-
+                    // we only scrap if the index sais so
+                    if (!this.scrapingIndex[nmun][cusecName]) {
+                        municipioResults = await this.scrapCusecData(cusecName, nmun, municipioResults);
+                        this.updateIndex(cusecName, nmun);
+                        await this.saveData(municipioResults, nmun);
                     }
-
-                    municipio.municipioScraped = true;
-                    if (this.config.useMongoDb) { await this.insertExtractedDataMongo(extractedData); }
-                    this.updateFileMunicipio(municipio, this.json_dir);
-                    this.saveInCsv(extractedData, json_file);
-
-                    //await browser.close();
                 }
             }
-
-            await this.finalizeSession();
+            await this.resetIndexAndFinalize();
         });
+    }
+
+    initializeMunicipio(nmun) {
+        if (!fs.existsSync(this.tmpDirSession)) {
+            fs.mkdirSync("./" + this.tmpDirSession);
+        }
+        let nmunPath = this.tmpDirSession + "/" + nmun + "---" + this.config.sessionId + ".json";
+        if (fs.existsSync(nmunPath)) {
+            return require("./" + nmunPath);
+        } else {
+            return { _id: nmun + "---" + this.config.sessionId, nmun: nmun, scrapingId: this.config.sessionId, date: this.date, cusecs: {} };
+        }
+    }
+
+    async scrapCusecData(cusecName, nmun, municipioResults) {
+        await this.initalizePuppeteer();
+
+        if (!this.scrapingIndex[nmun][cusecName]) {
+            let continueScraping = true;
+            let cusecFeature = this.separatedFeatures[nmun][cusecName];
+
+            let cusecData;
+            while (continueScraping) {
+                let capchaFound = false;
+
+                await this.page.setUserAgent(randomUA.generate());
+                await this.page.emulate(devices['iPhone 6']);
+
+                cusecData = await this.extractDataAlquilerVenta(cusecFeature);
+
+                await this.page.waitFor(this.timoutTimeSearches);
+                console.log(cusecData);
+                capchaFound = await this.detectCapcha(cusecData);
+
+                if (!capchaFound) {
+                    continueScraping = false;
+                }
+
+            }
+
+            municipioResults.cusecs[cusecName] = cusecData;
+            await this.saveData(municipioResults, nmun);
+            return municipioResults;
+        }
     }
 
     async initalizePuppeteer() {
@@ -112,17 +119,19 @@ module.exports = class ScrapperIdealistaPuppeteer {
             this.browser = await Apify.launchPuppeteer({
                 userAgent: randomUA.generate(),
                 headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+                args: ['--no-sandbox']
             });
         }
         this.page = await this.browser.newPage();
     }
 
-    async extractDataAlquilerVenta(municipio, cusec) {
-        const urlVenta = "https://www.idealista.com/en/areas/venta-viviendas/?shape=" + cusec.urlEncoded;
-        console.log("extrayendo datos de venta para " + municipio.fileName + " \n" + urlVenta);
-        let data = { fecha: this.date, cusec: cusec.cusec, nmun: cusec.nmun, precio_medio_venta: undefined, numero_anuncios_venta: undefined, precio_medio_alquiler: undefined, numero_anuncios_alquiler: undefined };
-        data["_id"] = cusec.cusec + "--" + this.date;
+    async extractDataAlquilerVenta(cusecFeature) {
+        const urlVenta = "https://www.idealista.com/en/areas/venta-viviendas/?shape=" + cusecFeature.polylineEncoded;
+        console.log("--> venta " + cusecFeature.cusec);
+        console.log(urlVenta);
+
+        let data = { fecha: this.date, cusec: cusecFeature.cusec, nmun: cusecFeature.nmun, precio_medio_venta: undefined, numero_anuncios_venta: undefined, precio_medio_alquiler: undefined, numero_anuncios_alquiler: undefined };
+        data["_id"] = cusecFeature.cusec + "--" + this.date;
         try {
             const extractedVenta = await this.extractPrize(urlVenta);
             data["precio_medio_venta"] = extractedVenta.averagePrize;
@@ -133,8 +142,10 @@ module.exports = class ScrapperIdealistaPuppeteer {
         }
         await this.page.waitFor(this.timoutTimeSearches);
 
-        const urlAlql = "https://www.idealista.com/en/areas/alquiler-viviendas/?shape=" + cusec.urlEncoded;
-        console.log("extrayendo datos de alquiler para " + municipio.fileName + " \n" + urlAlql);
+        const urlAlql = "https://www.idealista.com/en/areas/alquiler-viviendas/?shape=" + cusecFeature.polylineEncoded;
+        console.log("--> alquiler" + cusecFeature.cusec);
+        console.log(urlAlql);
+
         try {
             const extractedAlql = await this.extractPrize(urlAlql);
             data["precio_medio_alquiler"] = extractedAlql.averagePrize;
@@ -213,43 +224,52 @@ module.exports = class ScrapperIdealistaPuppeteer {
         return found;
     }
 
-    updateFileMunicipio(municipio, json_dir) {
-        const outputFilename = "./" + json_dir + "/" + municipio.fileName;
-        fs.writeFileSync(outputFilename, JSON.stringify(municipio));
+
+    initializeConfigAndIndex() {
+        this.config = require("./data/config/scrapingConfig.json");
+        this.scrapingIndex = require("./data/separatedFeatures/scrapingIndex.json");
+        this.tmpDirSession = "data/tmp/" + this.config.sessionId;
     }
 
-    initializeDataForMunicipio(json_file) {
-        let jsonDataFile = json_file.replace(".json", "_scraped.json");
-        let nmun = json_file.split("_")[0];
-        if (fs.existsSync(this.outputTempDir + " /" + jsonDataFile)) {
-            let data = require("./" + this.outputTempDir + jsonDataFile);
-            data._id = nmun + "--" + this.sessionId
-            if (!data.nmun) { data.nmun = nmun; }
-            return data;
+    async saveData(municipioResults, nmun) {
+        let nmunPath = this.tmpDirSession + "/" + nmun + "---" + this.config.sessionId + ".json";
+        fs.writeFileSync(nmunPath, JSON.stringify(municipioResults));
+        if (this.config.useMongoDb) {
+            await this.saveDataInMongo(municipioResults, nmun);
         }
-        const extractedData = { _id: nmun + "--" + this.sessionId, sessionId: this.sessionId, nmun: nmun, scrapedData: [] };
-        return extractedData;
     }
 
-    saveDataForMunicipio(data, json_file) {
-        let jsonDataFile = json_file.replace(".json", "_scraped.json");
-        if (!fs.existsSync(this.outputTempDir)) {
-            fs.mkdirSync("./" + this.outputTempDir);
-        }
-        const outputFilename = "./" + this.outputTempDir + jsonDataFile;
-        fs.writeFileSync(outputFilename, JSON.stringify(data));
-    }
-
-    async insertExtractedDataMongo(extractedData) {
+    async saveDataInMongo(municipioResults, nmun) {
         await this.MongoClient.connect(this.config.mongoUrl, function (err, client) {
-            const db = "realstate-db";
-            const collectionName = "summaries";
+            const db = "idealista-db";
+            const collectionName = "summaries-idealista-scraping";
             console.log("saving data in mongodb");
             const collection = client.db(db).collection(collectionName);
-            collection.save(extractedData);
+            collection.save(municipioResults);
             client.close();
         });
     }
+
+    saveDataAsCSV(municipioResults, nmun) {
+        let nmunPath = this.tmpDirSession + "/" + nmun + "---" + this.config.sessionId + ".csv";
+        const header = "CUSEC;NMUN;N_ANUN;P_MEDIO;FECHA\n"
+
+    }
+
+    updateIndex(cusecName, nmun) {
+        this.scrapingIndex[nmun][cusecName] = true;
+        fs.writeFileSync(this.scrapingIndexPath, JSON.stringify(this.scrapingIndex));
+    }
+
+    resetIndexAndFinalize() {
+        const FeatureProcessor = require('./FeatureProcessor');
+        const featureProcessor = new FeatureProcessor();
+        featureProcessor.processAllFeaturesAndCreateIndex();
+        this.date = new Date().toLocaleString().replace(/:/g, '_').replace(/ /g, '_').replace(/\//g, '_');
+        this.config.scrapingId = "scraping--idealista--" + this.date;
+        fs.writeFileSync("./data/config/scrapingConfig.json", JSON.stringify(this.config));
+    }
+
 }
 
 
